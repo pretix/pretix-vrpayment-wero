@@ -1,0 +1,5 @@
+[plugin]
+package = "pretix-vrpayment-wero"
+modules = [ "pretix_vrpayment_wero" ]
+marketplace_name = "vrpayment-wero"
+
