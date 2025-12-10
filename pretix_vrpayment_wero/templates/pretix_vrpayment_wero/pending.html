@@ -1,0 +1,14 @@
+{% load i18n %}
+{% load eventurl %}
+
+{% if payment.state == "pending" %}
+    <p>{% blocktrans trimmed %}
+        We're waiting for an answer from the payment provider regarding your payment. Please contact us if this
+        takes more than a few days.
+    {% endblocktrans %}</p>
+{% else %}
+    <p>
+    {% blocktrans trimmed %}
+    The payment failed without an error message. You can click below to try again,
+    {% endblocktrans %}</p>
+{% endif %}

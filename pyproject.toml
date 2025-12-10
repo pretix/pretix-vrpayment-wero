@@ -1,15 +1,15 @@
 [project]
 name = "pretix-vrpayment-wero"
 dynamic = ["version"]
-description = "Wero"
+description = "Accept WERO payments through VR Payment, the payment service provider of Volksbanken Raiffeisenbanken."
 readme = "README.rst"
 license = {text = "pretix Enterprise"}
 keywords = ["pretix"]
 authors = [
-    {name = "pretix team", email = "support@pretix.eu"},
+    {name = "pretix Team", email = "support@pretix.eu"},
 ]
 maintainers = [
-    {name = "pretix team", email = "support@pretix.eu"},
+    {name = "pretix Team", email = "support@pretix.eu"},
 ]
 
 dependencies = [
@@ -28,8 +28,8 @@ requires = [
 ]
 
 [project.urls]
-homepage = "https://code.rami.io/pretix/pretix-vrpayment-wero"
-repository = "https://code.rami.io/pretix/pretix-vrpayment-wero"
+homepage = "https://code.rami.io/pretix/pretix-vrpayment-wero/"
+repository = "https://code.rami.io/pretix/pretix-vrpayment-wero/"
 
 [tool.setuptools]
 include-package-data = true
