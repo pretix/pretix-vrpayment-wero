@@ -3,7 +3,7 @@ VR Payment (WERO)
 
 This is a plugin for `pretix`_. 
 
-Wero
+Accept WERO payments through VR Payment, the payment service provider of Volksbanken Raiffeisenbanken.
 
 Development setup
 -----------------

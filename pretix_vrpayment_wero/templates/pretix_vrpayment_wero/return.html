@@ -1,0 +1,33 @@
+{% extends "pretixpresale/event/base.html" %}
+{% load i18n %}
+{% load static %}
+{% load compress %}
+{% block title %}{% trans "Pay order" %}{% endblock %}
+{% block custom_header %}
+    {{ block.super }}
+    {% compress js %}
+        <script type="text/javascript" src="{% static "pretix_vrpayment_wero/pretix-vrpayment-wero.js" %}"></script>
+    {% endcompress %}
+{% endblock %}
+{% block content %}
+    <div class="panel panel-primary">
+        <div class="panel-heading">
+            <h3 class="panel-title">
+                {% blocktrans trimmed with code=order.code %}
+                    Confirm payment: {{ code }}
+                {% endblocktrans %}
+            </h3>
+        </div>
+        <div class="panel-body">
+            <div class="text-center">
+                <i class="fa fa-cog big-rotating-icon"></i>
+            </div>
+            <h2 class="text-center">
+                {% trans "Checking your payment status…" %}
+            </h2>
+            <p class="help-block">
+                {% trans "You can refresh this page, if this takes more than a few minutes." %}
+            </p>
+        </div>
+    </div>
+{% endblock %}

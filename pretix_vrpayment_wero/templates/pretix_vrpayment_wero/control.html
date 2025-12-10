@@ -1,0 +1,26 @@
+{% load i18n %}
+
+{% if payment_info %}
+    <dl class="dl-horizontal">
+        {% if "id" in payment_info %}
+            <dt>{% trans "Payment ID" %}</dt>
+            <dd>{{ payment_info.id }}</dd>
+        {% endif %}
+        {% if "consent" in payment_info %}
+            <dt>{% trans "Consent" %}</dt>
+            <dd>{{ payment_info.consent.status.description }} ({{ payment_info.consent.createdAt }})</dd>
+        {% endif %}
+        {% if "authorizations" in payment_info %}
+            <dt>{% trans "Authorizations" %}</dt>
+            {% for authorization in payment_info.authorizations %}
+                <dd>{{ authorization.status.description }} ({{ authorization.createdAt }})</dd>
+            {% endfor %}
+        {% endif %}
+        {% if "captures" in payment_info %}
+            <dt>{% trans "Captures" %}</dt>
+            {% for capture in payment_info.captures %}
+                <dd>{{ capture.status.description }} ({{ capture.createdAt }})</dd>
+            {% endfor %}
+        {% endif %}
+    </dl>
+{% endif %}
