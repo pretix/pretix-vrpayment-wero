@@ -1,0 +1,159 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-10 17:54+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: pretix_vrpayment_wero/apps.py:17
+msgid "VR Payment (WERO)"
+msgstr ""
+
+#: pretix_vrpayment_wero/apps.py:20
+msgid ""
+"Accept WERO payments through VR Payment, the payment service provider of "
+"Volksbanken Raiffeisenbanken."
+msgstr ""
+
+#: pretix_vrpayment_wero/apps.py:29
+msgid "Payment"
+msgstr ""
+
+#: pretix_vrpayment_wero/apps.py:29
+msgid "WERO (VR Payment)"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:22
+msgid "WERO via VR Payment"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:23
+msgid "WERO"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:37
+msgid "Test Client ID"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:44
+msgid "Test Client Secret"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:51
+msgid "Production Client ID"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:58
+msgid "Production Client Secret"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:233
+msgid "Refunding the amount via VR Payment WERO failed: {}"
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:261
+#, python-brace-format
+msgid ""
+"The VR Payment WERO plugin is operating in test mode. You can only use WERO "
+"test wallets to performtransactions. On the WERO payment page, obtain a "
+"<em>WERO code</em> and use it on the <a {args}>Example Consumer PSP "
+"interface</a>, to generate and approve the payment consent. No money will "
+"actually be transferred."
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:316
+msgid "Could not retrieve consents. Please try again."
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:344
+msgid "Could not retrieve authorizations. Please try again."
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:370
+msgid "Could not capture payment. Please try again."
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:405
+msgid "Could not validate payment. Please try again."
+msgstr ""
+
+#: pretix_vrpayment_wero/payment.py:430
+msgid ""
+"The payment failed without an error message. You can click below to try "
+"again."
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/checkout_payment_confirm.html:3
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/checkout_payment_form.html:10
+msgid ""
+"After you submitted your order, we will redirect you to the payment service "
+"provider to complete your payment. You will then be redirected back here."
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/checkout_payment_confirm.html:8
+msgid "Payment method"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/checkout_payment_form.html:4
+msgid ""
+"This payment method is available to European online banking users, whose "
+"banking institutions support WERO either through their native banking apps "
+"or through the WERO wallet app. Please have you app ready."
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/control.html:6
+msgid "Payment ID"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/control.html:10
+msgid "Consent"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/control.html:14
+msgid "Authorizations"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/control.html:20
+msgid "Captures"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/pending.html:5
+msgid ""
+"We're waiting for an answer from the payment provider regarding your "
+"payment. Please contact us if this takes more than a few days."
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/pending.html:11
+msgid ""
+"The payment failed without an error message. You can click below to try "
+"again,"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/return.html:5
+msgid "Pay order"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/return.html:16
+#, python-format
+msgid "Confirm payment: %(code)s"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/return.html:26
+msgid "Checking your payment status…"
+msgstr ""
+
+#: pretix_vrpayment_wero/templates/pretix_vrpayment_wero/return.html:29
+msgid "You can refresh this page, if this takes more than a few minutes."
+msgstr ""
