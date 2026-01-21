@@ -337,9 +337,11 @@ class VRPaymentWero(BasePaymentProvider):
             payment.info_data = info_data
             payment.save(update_fields=["info"])
 
-            if info_data["consent"].get('status', {}).get('result') == 'FAILED':
+            if info_data["consent"].get("status", {}).get("result") == "FAILED":
                 payment.fail()
-                raise PaymentException(_('No consent was provided for this payment. Please try again.'))
+                raise PaymentException(
+                    _("No consent was provided for this payment. Please try again.")
+                )
 
         return payment
 

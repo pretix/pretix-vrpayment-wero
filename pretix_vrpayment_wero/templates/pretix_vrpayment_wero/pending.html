@@ -10,7 +10,7 @@
     <p>
         {% if payment_info.consent.status.result == "FAILED" %}
             {{ payment_info.consent.status.description }}.
-        {% elseif payment_info.authorizations.0.status.result == "FAILED" %}
+        {% elif payment_info.authorizations.0.status.result == "FAILED" %}
             {{ payment_info.authorizations.0.status.description }}.
         {% else %}
             {% trans "The payment failed without an error message." %}
