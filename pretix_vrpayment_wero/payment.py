@@ -80,6 +80,8 @@ class VRPaymentWero(BasePaymentProvider):
             "event": self.event,
             "settings": self.settings,
             "order": payment.order,
+            "payment": payment,
+            "payment_info": payment.info_data,
         }
         return template.render(ctx)
 
@@ -310,7 +312,7 @@ class VRPaymentWero(BasePaymentProvider):
 
         return token_hash["access_token"]
 
-    def _get_consents(self, payment: OrderPayment):
+    def _get_consent(self, payment: OrderPayment):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(_("Could not retrieve consents. Please try again."))
@@ -334,6 +336,10 @@ class VRPaymentWero(BasePaymentProvider):
             info_data["consent"] = req.json()
             payment.info_data = info_data
             payment.save(update_fields=["info"])
+
+            if info_data["consent"].get('status', {}).get('result') == 'FAILED':
+                payment.fail()
+                raise PaymentException(_('No consent was provided for this payment. Please try again.'))
 
         return payment
 

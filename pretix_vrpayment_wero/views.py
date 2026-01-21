@@ -1,4 +1,5 @@
 import hashlib
+
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.functional import cached_property
@@ -67,6 +68,24 @@ class ReturnView(VRPaymentWeroOrderView, View):
             click = int(request.GET.get("click", 0))
         except ValueError:
             click = 0
+
+        # The following steps are kinda useless since attempting to capture will just work or not.
+        # But VR Payment wants us to do them anyway...
+        try:
+            prov._get_consent(self.payment)
+        except PaymentException:
+            return self._redirect_to_order()
+
+        self.payment.refresh_from_db()
+
+        try:
+            prov._get_authorizations(self.payment)
+        except PaymentException:
+            return self._redirect_to_order()
+
+        # reload payment from DB just in case
+        self.payment.refresh_from_db()
+        self.order.refresh_from_db()
 
         capture_payment = None
         try:
