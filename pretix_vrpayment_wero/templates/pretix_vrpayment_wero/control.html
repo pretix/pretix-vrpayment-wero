@@ -6,6 +6,12 @@
             <dt>{% trans "Payment ID" %}</dt>
             <dd>{{ payment_info.id }}</dd>
         {% endif %}
+        {% if "status" in payment_info %}
+            <dt>{% trans "Status" %}</dt>
+            <dd>{{ payment_info.status.description }} ({{ payment_info.status.code }})</dd>
+            <dt>{% trans "Date" %}</dt>
+            <dd>{{ payment_info.createdAt }}</dd>
+        {% endif %}
         {% if "consent" in payment_info %}
             <dt>{% trans "Consent" %}</dt>
             <dd>
