@@ -220,9 +220,7 @@ class VRPaymentWero(BasePaymentProvider):
                         "amount": str(refund.amount),
                     },
                     "refundReason": "OTHER",
-                    "transactionDescription": f"{refund.full_id} {eventname}"[
-                        :255
-                    ],
+                    "transactionDescription": f"{refund.full_id} {eventname}"[:255],
                 },
             )
 
