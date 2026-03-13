@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import requests
 from collections import OrderedDict
 from decimal import Decimal
@@ -205,6 +206,8 @@ class VRPaymentWero(BasePaymentProvider):
 
     def execute_refund(self, refund: OrderRefund):
         try:
+            eventname = re.sub("[^a-zA-Z0-9/?:().,'+\\- ]", "", str(self.event.name))
+
             req = requests.post(
                 self._get_api_url(
                     refund.order.testmode, "refunds", refund.payment.info_data["id"]
@@ -217,8 +220,8 @@ class VRPaymentWero(BasePaymentProvider):
                         "amount": str(refund.amount),
                     },
                     "refundReason": "OTHER",
-                    "transactionDescription": f"{refund.full_id} {str(refund.order.event.name)}"[
-                        :128
+                    "transactionDescription": f"{refund.full_id} {eventname}"[
+                        :255
                     ],
                 },
             )
