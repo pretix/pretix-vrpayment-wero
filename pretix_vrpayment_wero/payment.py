@@ -440,7 +440,9 @@ class VRPaymentWero(BasePaymentProvider):
                 info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 payment.save(update_fields=["state", "info"])
-            raise PaymentException(str(e))
+                return None
+            else:
+                raise PaymentException(str(e))
         else:
             payment.info_data = {**payment.info_data, **req.json()}
             payment.save(update_fields=["info"])
