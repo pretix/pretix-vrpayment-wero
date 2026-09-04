@@ -330,7 +330,7 @@ class VRPaymentWero(BasePaymentProvider):
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
                 info_data = payment.info_data
-                info_data['last_polling'] = now()
+                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 payment.save(update_fields=["state", "info"])
             else:
@@ -371,7 +371,7 @@ class VRPaymentWero(BasePaymentProvider):
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
                 info_data = payment.info_data
-                info_data['last_polling'] = now()
+                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 payment.save(update_fields=["state", "info"])
             else:
@@ -437,7 +437,7 @@ class VRPaymentWero(BasePaymentProvider):
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
                 info_data = payment.info_data
-                info_data['last_polling'] = now()
+                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 payment.save(update_fields=["state", "info"])
             raise PaymentException(str(e))
