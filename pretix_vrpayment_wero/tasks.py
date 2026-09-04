@@ -2,6 +2,7 @@ import logging
 from django.db import transaction
 from django_scopes import scopes_disabled
 from pretix.base.models import OrderPayment
+from pretix.base.payment import PaymentException
 from pretix.celery_app import app
 from pretix.helpers import OF_SELF
 
@@ -20,6 +21,20 @@ def refresh_transaction(payment):
     except KeyError as e:
         payment.fail(log_data=str(e))
         return
+
+    try:
+        pprov._get_consent(payment)
+    except PaymentException:
+        return
+
+    payment.refresh_from_db()
+
+    try:
+        pprov._get_authorizations(payment)
+    except PaymentException:
+        return
+
+    payment.refresh_from_db()
 
     capture_payment = None
     try:

@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.http import HttpRequest
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from pretix.base.forms import SecretKeySettingsField
 from pretix.base.models import Order, OrderPayment, OrderRefund
@@ -327,10 +328,16 @@ class VRPaymentWero(BasePaymentProvider):
             )
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
-            try:
-                payment.fail(log_data=str(e.response.text))
-            except AttributeError:
-                payment.fail(log_data=str(e))
+            if e.response is not None and e.response.status_code == 404:
+                info_data = payment.info_data
+                info_data["last_polling"] = now()
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                payment.save(update_fields=["state", "info"])
+            else:
+                try:
+                    payment.fail(log_data=str(e.response.text))
+                except AttributeError:
+                    payment.fail(log_data=str(e))
             raise PaymentException(str(e))
         else:
             info_data = payment.info_data
@@ -362,10 +369,16 @@ class VRPaymentWero(BasePaymentProvider):
             )
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
-            try:
-                payment.fail(log_data=str(e.response.text))
-            except AttributeError:
-                payment.fail(log_data=str(e))
+            if e.response is not None and e.response.status_code == 404:
+                info_data = payment.info_data
+                info_data["last_polling"] = now()
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                payment.save(update_fields=["state", "info"])
+            else:
+                try:
+                    payment.fail(log_data=str(e.response.text))
+                except AttributeError:
+                    payment.fail(log_data=str(e))
             raise PaymentException(str(e))
         else:
             payment.info_data = {**payment.info_data, **req.json()}
@@ -422,7 +435,14 @@ class VRPaymentWero(BasePaymentProvider):
             )
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
-            raise PaymentException(str(e))
+            if e.response is not None and e.response.status_code == 404:
+                info_data = payment.info_data
+                info_data["last_polling"] = now()
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                payment.save(update_fields=["state", "info"])
+                return None
+            else:
+                raise PaymentException(str(e))
         else:
             payment.info_data = {**payment.info_data, **req.json()}
             payment.save(update_fields=["info"])
