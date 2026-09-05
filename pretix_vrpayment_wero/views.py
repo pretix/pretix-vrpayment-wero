@@ -1,10 +1,13 @@
 import hashlib
+
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.functional import cached_property
 from django.views import View
 from pretix.base.models import Order, OrderPayment
 from pretix.base.payment import PaymentException
+from pretix.helpers import OF_SELF
 from pretix.multidomain.urlreverse import eventreverse
 
 
@@ -75,28 +78,30 @@ class ReturnView(VRPaymentWeroOrderView, View):
         except PaymentException:
             return self._redirect_to_order()
 
-        self.payment.refresh_from_db()
+        with transaction.atomic():
+            self.payment = OrderPayment.objects.select_for_update(of=OF_SELF).get(pk=self.payment.pk)
+            self.payment.refresh_from_db()
 
-        try:
-            prov._get_authorizations(self.payment)
-        except PaymentException:
-            return self._redirect_to_order()
-
-        # reload payment from DB just in case
-        self.payment.refresh_from_db()
-        self.order.refresh_from_db()
-
-        capture_payment = None
-        try:
-            capture_payment = prov._get_captures(self.payment)
-        except PaymentException:
-            pass
-
-        if not capture_payment:
             try:
-                capture_payment = prov._capture(self.payment)
+                prov._get_authorizations(self.payment)
+            except PaymentException:
+                return self._redirect_to_order()
+
+            # reload payment from DB just in case
+            self.payment.refresh_from_db()
+            self.order.refresh_from_db()
+
+            capture_payment = None
+            try:
+                capture_payment = prov._get_captures(self.payment)
             except PaymentException:
                 pass
+
+            if not capture_payment:
+                try:
+                    capture_payment = prov._capture(self.payment)
+                except PaymentException:
+                    pass
 
         if (
             capture_payment
