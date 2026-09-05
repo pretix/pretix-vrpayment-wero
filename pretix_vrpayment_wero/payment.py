@@ -419,11 +419,16 @@ class VRPaymentWero(BasePaymentProvider):
             # processing captures takes a few seconds
             self._poll_payment(payment)
         except requests.exceptions.RequestException as e:
-            try:
-                payment.fail(log_data=str(e.response.text))
-            except AttributeError:
-                payment.fail(log_data=str(e))
-            raise PaymentException(str(e))
+            if e.response is not None and e.response.status_code not in (400, 403):
+                # This can likely be healed by polling, otherwise periodic task will expire later
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                payment.save(update_fields=["state"])
+            else:
+                try:
+                    payment.fail(log_data=str(e.response.text))
+                except AttributeError:
+                    payment.fail(log_data=str(e))
+                raise PaymentException(str(e))
         else:
             payment.info_data["captures"] = [req.json()]
             payment.save(update_fields=["info"])
