@@ -338,7 +338,6 @@ class VRPaymentWero(BasePaymentProvider):
             if e.response is not None and e.response.status_code == 404:
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 payment.save(update_fields=["state"])
-                print(f"Poll payment {payment.full_id} in 30s")
                 # poll if we don't have consent -> consent timeout is 10 minutes, after that we will fail
                 self._poll_payment(payment)
             else:
