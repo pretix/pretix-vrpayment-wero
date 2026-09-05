@@ -28,10 +28,7 @@ def periodic_task(sender, **kwargs):
 
 def periodic_task_handler(package, identifier, sender, **kwargs):
     for ev in Event.objects.filter(plugins__contains=package):
-        if (
-            not ev.settings.payment_vrpayment_wero__enabled
-            or not ev.settings.payment_vrticketpay_wero__enabled
-        ):
+        if not ev.settings.get(f"payment_{identifier}__enabled"):
             continue
 
         # We check for up to a day, as we have observed settlements taking multiple hours

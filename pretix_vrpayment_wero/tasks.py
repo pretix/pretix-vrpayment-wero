@@ -28,7 +28,7 @@ def refresh_transaction(payment):
 
     payment.info_data = {
         **payment.info_data,
-        **{"last_polling": now().isoformat()},
+        "last_polling": now().isoformat(),
     }
     payment.save(update_fields=["info"])
 

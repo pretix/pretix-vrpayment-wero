@@ -481,7 +481,7 @@ class VRPaymentWero(BasePaymentProvider):
             payment.confirm()
 
     def _poll_payment(self, payment: OrderPayment):
-        payment_age = payment.created - now()
+        payment_age = now() - payment.created
 
         match payment_age:
             case age if age < timedelta(minutes=5):
