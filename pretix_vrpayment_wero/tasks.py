@@ -4,13 +4,14 @@ from django.utils.timezone import now
 from django_scopes import scopes_disabled
 from pretix.base.models import OrderPayment
 from pretix.base.payment import PaymentException
+from pretix.base.services.tasks import TransactionAwareTask
 from pretix.celery_app import app
 from pretix.helpers import OF_SELF
 
 logger = logging.getLogger(__name__)
 
 
-@app.task()
+@app.task(base=TransactionAwareTask)
 @scopes_disabled()
 @transaction.atomic
 def refresh_transaction(payment):
