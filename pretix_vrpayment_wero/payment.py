@@ -3,6 +3,7 @@ import logging
 import re
 import requests
 from collections import OrderedDict
+from datetime import timedelta
 from decimal import Decimal
 from django import forms
 from django.core.cache import cache
@@ -15,6 +16,8 @@ from pretix.base.forms import SecretKeySettingsField
 from pretix.base.models import Order, OrderPayment, OrderRefund
 from pretix.base.payment import BasePaymentProvider, PaymentException
 from pretix.multidomain.urlreverse import build_absolute_uri
+
+from pretix_vrpayment_wero.tasks import refresh_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +196,10 @@ class VRPaymentWero(BasePaymentProvider):
             )
 
             req.raise_for_status()
+
+            # check in on payments that may never follow the redirect
+            self._poll_payment(payment)
+
         except requests.exceptions.RequestException as e:
             try:
                 payment.fail(log_data=str(e.response.text))
@@ -329,10 +336,10 @@ class VRPaymentWero(BasePaymentProvider):
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
-                info_data = payment.info_data
-                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state", "info"])
+                payment.save(update_fields=["state"])
+                # poll if we don't have consent -> consent timeout is 10 minutes, after that we will fail
+                self._poll_payment(payment)
             else:
                 try:
                     payment.fail(log_data=str(e.response.text))
@@ -370,10 +377,10 @@ class VRPaymentWero(BasePaymentProvider):
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
-                info_data = payment.info_data
-                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state", "info"])
+                payment.save(update_fields=["state"])
+                # polling for authorization
+                self._poll_payment(payment)
             else:
                 try:
                     payment.fail(log_data=str(e.response.text))
@@ -409,6 +416,8 @@ class VRPaymentWero(BasePaymentProvider):
                 },
             )
             req.raise_for_status()
+            # processing captures takes a few seconds
+            self._poll_payment(payment)
         except requests.exceptions.RequestException as e:
             try:
                 payment.fail(log_data=str(e.response.text))
@@ -419,9 +428,9 @@ class VRPaymentWero(BasePaymentProvider):
             payment.info_data["captures"] = [req.json()]
             payment.save(update_fields=["info"])
 
-            return self._get_captures(payment)
+            return self._get_captures(payment, is_retry=True)
 
-    def _get_captures(self, payment: OrderPayment):
+    def _get_captures(self, payment: OrderPayment, is_retry=False):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(_("Could not validate payment. Please try again."))
@@ -436,18 +445,23 @@ class VRPaymentWero(BasePaymentProvider):
             req.raise_for_status()
         except requests.exceptions.RequestException as e:
             if e.response is not None and e.response.status_code == 404:
-                info_data = payment.info_data
-                info_data["last_polling"] = now()
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state", "info"])
+                payment.save(update_fields=["state"])
+                # we don't call refresh_transaction.apply_async here because we first call
+                # _get_captures and only if it returns None, then call _capture() which takes
+                # care of polling if there wasn't a capture at all
                 return None
             else:
                 raise PaymentException(str(e))
         else:
             payment.info_data = {**payment.info_data, **req.json()}
             payment.save(update_fields=["info"])
-
             self._process_captures(payment)
+            # we poll here while the captures is not approved and if the _capture isn't the source of this _get_captures
+            # call
+            payment.refresh_from_db()
+            if payment.state == OrderPayment.PAYMENT_STATE_PENDING and not is_retry:
+                self._poll_payment(payment)
 
         return payment
 
@@ -464,3 +478,22 @@ class VRPaymentWero(BasePaymentProvider):
             payment.save(update_fields=["state"])
         elif payment.info_data["captures"][-1]["status"]["result"] == "SUCCESSFUL":
             payment.confirm()
+
+    def _poll_payment(self, payment: OrderPayment):
+        payment_age = now() - payment.created
+
+        match payment_age:
+            case age if age < timedelta(minutes=5):
+                countdown = 10
+            case age if age < timedelta(minutes=15):
+                countdown = 30
+            case age if age < timedelta(minutes=30):
+                countdown = 60
+            case _:
+                countdown = None  # the payment is old enough that we can rely on the scheduled task alone
+
+        if countdown is not None:
+            logger.info(
+                f"Scheduling polling of {payment.global_id} in {countdown} seconds"
+            )
+            refresh_transaction.apply_async(args=(payment.pk,), countdown=countdown)

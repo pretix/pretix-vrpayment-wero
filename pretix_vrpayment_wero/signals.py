@@ -28,10 +28,10 @@ def periodic_task(sender, **kwargs):
 
 def periodic_task_handler(package, identifier, sender, **kwargs):
     for ev in Event.objects.filter(plugins__contains=package):
-        if not ev.settings.payment_vrpayment_wero__enabled:
+        if not ev.settings.get(f"payment_{identifier}__enabled"):
             continue
 
-        # We only check payments that are not older than 1 hour.
+        # We check for up to a day, as we have observed settlements taking multiple hours
         # Also make sure to fail any payments that are older than 1 hour to enable retry in order-view.
         payments_qs = OrderPayment.objects.filter(
             order__event=ev,
@@ -54,6 +54,6 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
                 OrderPayment.PAYMENT_STATE_CANCELED,
                 OrderPayment.PAYMENT_STATE_FAILED,
             ],
-            created__gte=now() - timedelta(hours=1),
+            created__gte=now() - timedelta(hours=24),
         ):
             refresh_transaction.apply_async(args=(payment.pk,))

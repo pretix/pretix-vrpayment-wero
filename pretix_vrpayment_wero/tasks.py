@@ -1,5 +1,6 @@
 import logging
 from django.db import transaction
+from django.utils.timezone import now
 from django_scopes import scopes_disabled
 from pretix.base.models import OrderPayment
 from pretix.base.payment import PaymentException
@@ -16,11 +17,20 @@ def refresh_transaction(payment):
     payment = OrderPayment.objects.select_for_update(of=OF_SELF).get(pk=payment)
     pprov = payment.payment_provider
 
+    if payment.state == OrderPayment.PAYMENT_STATE_CONFIRMED:
+        return
+
     try:
         payment.info_data["id"]
     except KeyError as e:
         payment.fail(log_data=str(e))
         return
+
+    payment.info_data = {
+        **payment.info_data,
+        "last_polling": now().isoformat(),
+    }
+    payment.save(update_fields=["info"])
 
     try:
         pprov._get_consent(payment)
