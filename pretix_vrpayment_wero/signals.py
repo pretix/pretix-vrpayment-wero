@@ -43,7 +43,7 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
                 OrderPayment.PAYMENT_STATE_CREATED,
                 OrderPayment.PAYMENT_STATE_PENDING,
             ],
-                created__lt=now() - timedelta(hours=1),
+            created__lt=now() - timedelta(hours=1),
         ):
             payment.fail(log_data="Payment expired.")
 
@@ -54,6 +54,6 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
                 OrderPayment.PAYMENT_STATE_CANCELED,
                 OrderPayment.PAYMENT_STATE_FAILED,
             ],
-                created__gte=now() - timedelta(hours=24),
+            created__gte=now() - timedelta(hours=24),
         ):
             refresh_transaction.apply_async(args=(payment.pk,))
