@@ -1,5 +1,4 @@
 import hashlib
-
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -79,7 +78,9 @@ class ReturnView(VRPaymentWeroOrderView, View):
             return self._redirect_to_order()
 
         with transaction.atomic():
-            self.payment = OrderPayment.objects.select_for_update(of=OF_SELF).get(pk=self.payment.pk)
+            self.payment = OrderPayment.objects.select_for_update(of=OF_SELF).get(
+                pk=self.payment.pk
+            )
             self.payment.refresh_from_db()
 
             try:
