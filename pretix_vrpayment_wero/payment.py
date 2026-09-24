@@ -169,7 +169,11 @@ class VRPaymentWero(BasePaymentProvider):
                         "useCase": "EVENT_DEPENDENT",
                         "reasonForCapture": "AVAILABILITY",
                         "partialCapture": False,
-                        "timeToCapture": 864000,
+                        # the documented maximum is 864000, except for the public transport sector, which has the
+                        # shorter limit of 604800 seconds. VRPayment has placed at least one customer Z#23247657
+                        # wrongly in this group
+                        # We can live without these three extra days
+                        "timeToCapture": 604800,
                         "multiCapture": False,
                     },
                     "transactionDetails": {
