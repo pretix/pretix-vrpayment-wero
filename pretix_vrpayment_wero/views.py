@@ -1,13 +1,14 @@
 import hashlib
-from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.functional import cached_property
 from django.views import View
 from pretix.base.models import Order, OrderPayment
 from pretix.base.payment import PaymentException
-from pretix.helpers import OF_SELF
 from pretix.multidomain.urlreverse import eventreverse
+
+from pretix_vrpayment_wero.client import WeroApiError
+from pretix_vrpayment_wero.tasks import refresh_transaction
 
 
 class VRPaymentWeroOrderView:
@@ -56,7 +57,6 @@ class VRPaymentWeroOrderView:
 
 class ReturnView(VRPaymentWeroOrderView, View):
     def get(self, request, *args, **kwargs):
-        prov = self.pprov
 
         if self.payment.state in (
             OrderPayment.PAYMENT_STATE_CONFIRMED,
@@ -70,51 +70,20 @@ class ReturnView(VRPaymentWeroOrderView, View):
         except ValueError:
             click = 0
 
-        # The following steps are kinda useless since attempting to capture will just work or not.
-        # But VR Payment wants us to do them anyway...
         try:
-            prov._get_consent(self.payment)
+            successful_capture = refresh_transaction(self.payment.pk, False)
+            if not successful_capture and click < 5:
+                return render(
+                    request,
+                    "pretix_vrpayment_wero/return.html",
+                    {
+                        "order": self.payment.order,
+                    },
+                )
+
+        except WeroApiError:
+            return self._redirect_to_order()
         except PaymentException:
             return self._redirect_to_order()
-
-        with transaction.atomic():
-            self.payment = OrderPayment.objects.select_for_update(of=OF_SELF).get(
-                pk=self.payment.pk
-            )
-            self.payment.refresh_from_db()
-
-            try:
-                prov._get_authorizations(self.payment)
-            except PaymentException:
-                return self._redirect_to_order()
-
-            # reload payment from DB just in case
-            self.payment.refresh_from_db()
-            self.order.refresh_from_db()
-
-            capture_payment = None
-            try:
-                capture_payment = prov._get_captures(self.payment)
-            except PaymentException:
-                pass
-
-            if not capture_payment:
-                try:
-                    capture_payment = prov._capture(self.payment)
-                except PaymentException:
-                    pass
-
-        if (
-            capture_payment
-            and capture_payment.state == OrderPayment.PAYMENT_STATE_PENDING
-            and click < 5
-        ):
-            return render(
-                request,
-                "pretix_vrpayment_wero/return.html",
-                {
-                    "order": self.payment.order,
-                },
-            )
 
         return self._redirect_to_order()

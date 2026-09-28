@@ -10,8 +10,9 @@
             <dt>{% trans "Status" %}</dt>
             <dd>{{ payment_info.status.description }} ({{ payment_info.status.code }})</dd>
             <dt>{% trans "Date" %}</dt>
-            <dd>{{ payment_info.createdAt }}</dd>
+            <dd>{{ payment_info.status.created_at }}</dd>
         {% endif %}
+
         {% if "consent" in payment_info %}
             <dt>{% trans "Consent" %}</dt>
             <dd>
@@ -54,6 +55,21 @@
                         <dd>{{ capture.status.description }} ({{ capture.status.code }})</dd>
                         <dt>{% trans "Date" %}</dt>
                         <dd>{{ capture.createdAt }}</dd>
+                    </dl>
+                </dd>
+            {% endfor %}
+        {% endif %}
+        {% if "refunds" in payment_info %}
+            {% for refund in payment_info.refunds %}
+                <dt>{% trans "Refund" %}</dt>
+                <dd>&nbsp;
+                    <dl class="dl-horizontal">
+                        <dt>{% trans "ID" %}</dt>
+                        <dd>{{ refund.id }}</dd>
+                        <dt>{% trans "Status" %}</dt>
+                        <dd>{{ refund.status.description }} ({{ refund.status.code }})</dd>
+                        <dt>{% trans "Date" %}</dt>
+                        <dd>{{ refund.createdAt }}</dd>
                     </dl>
                 </dd>
             {% endfor %}

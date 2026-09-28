@@ -1,0 +1,8 @@
+source_up_if_exists
+
+export WERO_TSP_CLIENT_ID=
+export WERO_TSP_CLIENT_SECRET=
+export TSP_MERCHANT_ID=
+
+export WERO_CLIENT_ID=
+export WERO_CLIENT_SECRET=
