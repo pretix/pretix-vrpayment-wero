@@ -1,23 +1,36 @@
+from typing import Any, List, Union
+
 import hashlib
 import logging
 import re
-import requests
 from collections import OrderedDict
-from datetime import timedelta
 from decimal import Decimal
 from django import forms
-from django.core.cache import cache
 from django.http import HttpRequest
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
-from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from pretix.base.forms import SecretKeySettingsField
 from pretix.base.models import Order, OrderPayment, OrderRefund
 from pretix.base.payment import BasePaymentProvider, PaymentException
 from pretix.multidomain.urlreverse import build_absolute_uri
 
-from pretix_vrpayment_wero.tasks import refresh_transaction
+from pretix_vrpayment_wero.client import (
+    Authorization,
+    CreatedRefund,
+    GeneralError,
+    Refund,
+    Result,
+    WeroApiError,
+    WeroClient,
+)
+from pretix_vrpayment_wero.info_data import (
+    load_payment_info_data,
+    load_refund_info_data,
+    payment_info,
+    refund_info,
+)
+from pretix_vrpayment_wero.tasks import refresh_refund, refresh_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +40,6 @@ class VRPaymentWero(BasePaymentProvider):
     verbose_name = _("WERO via VR Payment")
     public_name = _("WERO")
     execute_payment_needs_user = True
-    api_infix = ""
-    test_api_url = "https://vrp-epi-payment-service-test.public.stg.vrpintegration.dev/"
-    test_oauth_url = "https://keycloak-apps-test.public.apps.stg.vrpintegration.dev/"
-    prod_api_url = "https://wero.api.vr-payment.digital/"
-    prod_oauth_url = "https://keycloak.public.apps.prod.vr-payment.digital/"
 
     @property
     def settings_form_fields(self) -> dict:
@@ -86,7 +94,7 @@ class VRPaymentWero(BasePaymentProvider):
             "settings": self.settings,
             "order": payment.order,
             "payment": payment,
-            "payment_info": payment.info_data,
+            "payment_info": load_payment_info_data(payment).to_dict(),
         }
         return template.render(ctx)
 
@@ -98,7 +106,7 @@ class VRPaymentWero(BasePaymentProvider):
             "request": request,
             "event": self.event,
             "settings": self.settings,
-            "payment_info": payment.info_data,
+            "payment_info": load_payment_info_data(payment).to_dict(),
             "payment": payment,
             "provider": self,
         }
@@ -116,7 +124,7 @@ class VRPaymentWero(BasePaymentProvider):
             "request": request,
             "event": self.event,
             "settings": self.settings,
-            "payment_info": refund.info_data,
+            "payment_info": load_refund_info_data(refund).to_dict(),
             "payment": refund,
             "provider": self,
         }
@@ -154,104 +162,6 @@ class VRPaymentWero(BasePaymentProvider):
         }
         return template.render(ctx)
 
-    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str:
-        try:
-            req = requests.post(
-                self._get_api_url(payment.order.testmode),
-                headers=self._get_auth_header(payment.order.testmode),
-                json={
-                    "paymentPlan": {
-                        "brand": "WERO",
-                        "payment": {
-                            "currency": self.event.currency,
-                            "amount": str(payment.amount),
-                        },
-                        "useCase": "EVENT_DEPENDENT",
-                        "reasonForCapture": "AVAILABILITY",
-                        "partialCapture": False,
-                        # the documented maximum is 864000, except for the public transport sector, which has the
-                        # shorter limit of 604800 seconds. VRPayment has placed at least one customer Z#23247657
-                        # wrongly in this group
-                        # We can live without these three extra days
-                        "timeToCapture": 604800,
-                        "multiCapture": False,
-                    },
-                    "transactionDetails": {
-                        "transactionId": f"{payment.order.event.slug.upper()}-{payment.full_id}"[
-                            -64:
-                        ],
-                        "returnUrl": build_absolute_uri(
-                            self.event,
-                            f"plugins:pretix_{self.identifier}:return",
-                            kwargs={
-                                "order": payment.order.code,
-                                "payment": payment.pk,
-                                "hash": hashlib.sha1(
-                                    payment.order.secret.lower().encode()
-                                ).hexdigest(),
-                                "payment_provider": self.identifier,
-                            },
-                        ),
-                        "transactionDescription": f"{payment.full_id} {str(payment.order.event.name)}"[
-                            :128
-                        ],
-                    },
-                },
-            )
-
-            req.raise_for_status()
-
-            # check in on payments that may never follow the redirect
-            self._poll_payment(payment)
-
-        except requests.exceptions.RequestException as e:
-            try:
-                payment.fail(log_data=str(e.response.text))
-            except AttributeError:
-                payment.fail(log_data=str(e))
-            raise PaymentException(str(e))
-
-        payment.info_data = req.json()
-        payment.save(update_fields=["info"])
-
-        return payment.info_data["landingPage"]
-
-    def execute_refund(self, refund: OrderRefund):
-        try:
-            eventname = re.sub("[^a-zA-Z0-9/?:().,'+\\- ]", "", str(self.event.name))
-
-            req = requests.post(
-                self._get_api_url(
-                    refund.order.testmode, "refunds", refund.payment.info_data["id"]
-                ),
-                headers=self._get_auth_header(refund.order.testmode),
-                json={
-                    "captureId": refund.payment.info_data["captures"][0]["id"],
-                    "payment": {
-                        "currency": refund.order.event.currency,
-                        "amount": str(refund.amount),
-                    },
-                    "refundReason": "OTHER",
-                    "transactionDescription": f"{refund.full_id} {eventname}"[:255],
-                },
-            )
-
-            req.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            refund.state = OrderRefund.REFUND_STATE_FAILED
-            refund.save(update_fields=["state"])
-            refund.order.log_action(
-                "pretix.event.order.refund.failed",
-                {"local_id": refund.local_id, "provider": refund.provider},
-            )
-            raise PaymentException(
-                _("Refunding the amount via VR Payment WERO failed: {}").format(str(e))
-            )
-
-        refund.info_data = req.json()
-        refund.save(update_fields=["info"])
-        refund.done()
-
     def is_allowed(self, request: HttpRequest, total: Decimal = None) -> bool:
         return (
             super().is_allowed(request, total)
@@ -284,87 +194,96 @@ class VRPaymentWero(BasePaymentProvider):
             )
         return None
 
-    def _get_api_url(self, testmode: bool, endpoint: str = None, id: str = None) -> str:
-        attr = f'{"test" if testmode else "prod"}_api_url'
-        base = f'{getattr(self, attr)}{self.api_infix + "/" if self.api_infix else ""}'
-
-        return f'{base}api/v1/payments{"/" + id if id else ""}{"/" + endpoint if endpoint else ""}'
-
-    def _get_auth_header(self, testmode: bool) -> dict:
-        return {
-            "Authorization": f"Bearer {self._get_token(testmode)}",
-        }
+    def get_wero_client(self, obj: Union[OrderPayment, OrderRefund]) -> WeroClient:
+        return WeroClient(
+            self._get_scoped_setting(True, "client_id"),
+            self._get_scoped_setting(True, "client_secret"),
+            self._get_scoped_setting(False, "client_id"),
+            self._get_scoped_setting(False, "client_secret"),
+            obj.order.testmode,
+        )
 
     def _get_scoped_setting(self, testmode: bool, key: str) -> str:
         return self.settings.get(f'{"test" if testmode else "prod"}_{key}')
 
-    def _get_token(self, testmode: bool) -> str:
-        client_id = self._get_scoped_setting(testmode, "client_id")
-        client_secret = self._get_scoped_setting(testmode, "client_secret")
-
-        checksum = hashlib.sha256(
-            "".join([client_id, client_secret]).encode()
-        ).hexdigest()
-        cache_key_hash = f'pretix_vrpayment_wero_token_hash_{"test" if self.event.testmode else "prod"}_{checksum}'
-        token_hash = cache.get(cache_key_hash)
-
-        if not token_hash:
-            attr = f'{"test" if self.event.testmode else "prod"}_oauth_url'
-            req = requests.post(
-                f"{getattr(self, attr)}auth/realms/EPI/protocol/openid-connect/token/",
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str:
+        try:
+            client = self.get_wero_client(payment)
+            resp = client.create_payment(
+                f"{payment.order.event.slug.upper()}-{payment.full_id}",
+                self.event.currency,
+                payment.amount,
+                build_absolute_uri(
+                    self.event,
+                    f"plugins:pretix_{self.identifier}:return",
+                    kwargs={
+                        "order": payment.order.code,
+                        "payment": payment.pk,
+                        "hash": hashlib.sha1(
+                            payment.order.secret.lower().encode()
+                        ).hexdigest(),
+                        "payment_provider": self.identifier,
+                    },
+                ),
+                f"{payment.full_id} {str(payment.order.event.name)}",
             )
 
-            req.raise_for_status()
-            token_hash = req.json()
-            cache.set(cache_key_hash, token_hash, timeout=token_hash["expires_in"] - 10)
+            with payment_info(payment, save=True) as info:
+                info.id = resp.id
+                info.payment = resp
 
-        return token_hash["access_token"]
+            return resp.landing_page
+        except (WeroApiError, GeneralError) as e:
+            if isinstance(e, WeroApiError):
+                message = e.wero_error.message
+            else:
+                try:
+                    message = e.response.text
+                except AttributeError:
+                    message = str(e.response)
 
-    def _get_consent(self, payment: OrderPayment):
+            payment.fail(log_data=message)
+            raise PaymentException(message)
+        finally:
+            payment.save(update_fields=["info", "state"])
+            # check in on payments that may never follow the redirect
+            refresh_transaction.apply_async(args=(payment.pk, True), countdown=30)
+
+    def get_consent(self, payment: OrderPayment):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(_("Could not retrieve consents. Please try again."))
 
         try:
-            req = requests.get(
-                self._get_api_url(
-                    payment.order.testmode, "consents", payment.info_data["id"]
-                ),
-                headers=self._get_auth_header(payment.order.testmode),
-            )
-            req.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code == 404:
-                payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state"])
-                # poll if we don't have consent -> consent timeout is 10 minutes, after that we will fail
-                self._poll_payment(payment)
-            else:
-                try:
-                    payment.fail(log_data=str(e.response.text))
-                except AttributeError:
-                    payment.fail(log_data=str(e))
-            raise PaymentException(str(e))
-        else:
-            info_data = payment.info_data
-            info_data["consent"] = req.json()
-            payment.info_data = info_data
-            payment.save(update_fields=["info"])
+            client = self.get_wero_client(payment)
+            consent = client.get_consent(payment.info_data["id"])
 
-            if info_data["consent"].get("status", {}).get("result") == "FAILED":
-                payment.fail()
+            with payment_info(payment) as info_data:
+                info_data.consent = consent
+
+            if consent.status.result == Result.PENDING:
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                return None
+            if consent.status.result == Result.FAILED:
+                payment.fail(log_data=str(consent))
                 raise PaymentException(
                     _("No consent was provided for this payment. Please try again.")
                 )
+            if consent.status.result == Result.SUCCESSFUL:
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                return consent
 
-        return payment
+        except WeroApiError as e:
+            if not e.retry:
+                payment.fail(log_data=e.wero_error.message)
+            raise e
 
-    def _get_authorizations(self, payment: OrderPayment):
+        finally:
+            payment.save(update_fields=["state", "info"])
+
+        raise NotImplementedError(consent)
+
+    def get_authorizations(self, payment: OrderPayment) -> List[Authorization] | None:
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(
@@ -372,137 +291,205 @@ class VRPaymentWero(BasePaymentProvider):
             )
 
         try:
-            req = requests.get(
-                self._get_api_url(
-                    payment.order.testmode, "authorizations", payment.info_data["id"]
-                ),
-                headers=self._get_auth_header(payment.order.testmode),
-            )
-            req.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code == 404:
+            client = self.get_wero_client(payment)
+            authorizations = client.get_authorizations(payment.info_data["id"])
+
+            with payment_info(payment) as info_data:
+                info_data.authorizations = authorizations
+
+            pending = [auth.status.result == Result.PENDING for auth in authorizations]
+            if any(pending):
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state"])
-                # polling for authorization
-                self._poll_payment(payment)
-            else:
-                try:
-                    payment.fail(log_data=str(e.response.text))
-                except AttributeError:
-                    payment.fail(log_data=str(e))
-            raise PaymentException(str(e))
-        else:
-            payment.info_data = {**payment.info_data, **req.json()}
-            payment.save(update_fields=["info"])
+                return None
 
-        return payment
+            failed = [auth.status.result == Result.FAILED for auth in authorizations]
+            if any(failed):
+                payment.fail(log_data=str(authorizations))
+                raise PaymentException(
+                    _("Authorization failed for this payment. Please try again.")
+                )
 
-    def _capture(self, payment: OrderPayment):
+            success = [
+                auth.status.result == Result.SUCCESSFUL for auth in authorizations
+            ]
+            if any(success):
+                return authorizations
+
+        except WeroApiError as e:
+            if not e.retry:
+                payment.fail(log_data=e.wero_error.message)
+            raise e
+        finally:
+            payment.save(update_fields=["state", "info"])
+
+        raise NotImplementedError(authorizations)
+
+    def capture(self, payment: OrderPayment):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(_("Could not capture payment. Please try again."))
 
         try:
-            req = requests.post(
-                self._get_api_url(
-                    payment.order.testmode, "captures", payment.info_data["id"]
-                ),
-                headers=self._get_auth_header(payment.order.testmode),
-                json={
-                    "merchantTransactionId": f"{payment.order.event.slug.upper()}-{payment.full_id}"[
-                        -64:
-                    ],
-                    "payment": {
-                        "currency": self.event.currency,
-                        "amount": str(payment.amount),
-                    },
-                    "finalCapture": True,
-                },
+            client = self.get_wero_client(payment)
+            capture = client.create_capture(
+                payment.info_data["id"],
+                f"{payment.order.event.slug.upper()} - {payment.full_id}",
+                self.event.currency,
+                payment.amount,
             )
-            req.raise_for_status()
-            # processing captures takes a few seconds
-            self._poll_payment(payment)
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code not in (400, 403):
-                # This can likely be healed by polling, otherwise periodic task will expire later
-                payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state"])
-            else:
-                try:
-                    payment.fail(log_data=str(e.response.text))
-                except AttributeError:
-                    payment.fail(log_data=str(e))
-                raise PaymentException(str(e))
-        else:
-            payment.info_data["captures"] = [req.json()]
-            payment.save(update_fields=["info"])
+            with payment_info(payment) as info_data:
+                info_data.capture = capture
 
-            return self._get_captures(payment, is_retry=True)
+        except WeroApiError as e:
+            if not e.retry:
+                payment.fail(log_data=e.wero_error.message)
+            raise e
+        finally:
+            payment.save(update_fields=["state", "info"])
 
-    def _get_captures(self, payment: OrderPayment, is_retry=False):
+        return capture
+
+    def get_captures(self, payment: OrderPayment, authorizations: List[Authorization]):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(_("Could not validate payment. Please try again."))
 
         try:
-            req = requests.get(
-                self._get_api_url(
-                    payment.order.testmode, "captures", payment.info_data["id"]
-                ),
-                headers=self._get_auth_header(payment.order.testmode),
-            )
-            req.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            if e.response is not None and e.response.status_code == 404:
-                payment.state = OrderPayment.PAYMENT_STATE_PENDING
-                payment.save(update_fields=["state"])
-                # we don't call refresh_transaction.apply_async here because we first call
-                # _get_captures and only if it returns None, then call _capture() which takes
-                # care of polling if there wasn't a capture at all
-                return None
-            else:
-                raise PaymentException(str(e))
-        else:
-            payment.info_data = {**payment.info_data, **req.json()}
-            payment.save(update_fields=["info"])
-            self._process_captures(payment)
-            # we poll here while the captures is not approved and if the _capture isn't the source of this _get_captures
-            # call
-            payment.refresh_from_db()
-            if payment.state == OrderPayment.PAYMENT_STATE_PENDING and not is_retry:
-                self._poll_payment(payment)
+            client = self.get_wero_client(payment)
+            captures = client.get_captures(payment.info_data["id"])
 
-        return payment
+            with payment_info(payment) as info_data:
+                info_data.captures = captures
 
-    def _process_captures(self, payment: OrderPayment):
-        if payment.info_data["captures"][-1]["status"]["result"] == "FAILED":
-            payment.fail()
-            raise PaymentException(
-                _(
-                    "The payment failed without an error message. You can click below to try again."
+            successful_authorizations = [
+                auth.id
+                for auth in authorizations
+                if auth.status.result == Result.SUCCESSFUL
+            ]
+            last_capture = captures[-1]
+
+            if last_capture.status.result == Result.FAILED:
+                payment.fail()
+                raise PaymentException(
+                    _(
+                        "The payment failed without an error message. You can click below to try again."
+                    )
                 )
-            )
-        elif payment.info_data["captures"][-1]["status"]["result"] == "PENDING":
-            payment.state = OrderPayment.PAYMENT_STATE_PENDING
-            payment.save(update_fields=["state"])
-        elif payment.info_data["captures"][-1]["status"]["result"] == "SUCCESSFUL":
-            payment.confirm()
+            elif last_capture.status.result == Result.PENDING:
+                payment.state = OrderPayment.PAYMENT_STATE_PENDING
+                return None
+            elif (
+                last_capture.status.result == Result.SUCCESSFUL
+                and last_capture.authorization_id in successful_authorizations
+            ):
+                payment.confirm()
 
-    def _poll_payment(self, payment: OrderPayment):
-        payment_age = now() - payment.created
+            return captures
+        except WeroApiError as e:
+            if not e.retry:
+                payment.fail(log_data=e.wero_error.message)
+            raise e
+        finally:
+            payment.save(update_fields=["state", "info"])
 
-        match payment_age:
-            case age if age < timedelta(minutes=5):
-                countdown = 10
-            case age if age < timedelta(minutes=15):
-                countdown = 30
-            case age if age < timedelta(minutes=30):
-                countdown = 60
-            case _:
-                countdown = None  # the payment is old enough that we can rely on the scheduled task alone
+    def _fail_refund(self, refund: OrderRefund, log_data: Any):
+        refund.state = OrderRefund.REFUND_STATE_FAILED
 
-        if countdown is not None:
-            logger.info(
-                f"Scheduling polling of {payment.global_id} in {countdown} seconds"
-            )
-            refresh_transaction.apply_async(args=(payment.pk,), countdown=countdown)
+        refund.order.log_action(
+            "pretix.event.order.refund.failed",
+            {
+                "local_id": refund.local_id,
+                "provider": self.identifier,
+                "info": refund.info,
+                "data": log_data,
+            },
+        )
+
+        refund.save(update_fields=["state"])
+
+    def _process_refund(self, refund: OrderRefund, wero_refund: Refund | CreatedRefund):
+        if wero_refund.status.result == Result.FAILED:
+            self._fail_refund(refund, log_data=wero_refund.to_dict())
+        elif wero_refund.status.result == Result.PENDING:
+            pass
+        elif wero_refund.status.result == Result.SUCCESSFUL:
+            if wero_refund.status.detail == "REFUND_SETTLED":
+                refund.done()
+        else:
+            raise NotImplementedError(wero_refund)
+
+    def get_refunds(self, refund: OrderRefund):
+        if "id" not in refund.info_data:
+            self._fail_refund(refund, "")
+            raise PaymentException(_("Could not retrieve refund_id. Please try again."))
+
+        try:
+            client = self.get_wero_client(refund)
+
+            with refund_info(refund=refund) as info_data:
+                resp = client.get_refunds(
+                    refund.payment.info_data["id"],
+                )
+
+                relevant_refunds = []
+                for ref in resp:
+                    if ref.id == info_data.id:
+                        relevant_refunds.append(ref)
+
+                if len(relevant_refunds) > 1:
+                    self._fail_refund(
+                        refund, log_data="Multiple matching refunds in API response."
+                    )
+                    raise PaymentException(
+                        _("Multiple matching refunds in API response.")
+                    )
+
+                info_data.refunds = relevant_refunds
+
+            self._process_refund(refund, relevant_refunds[0])
+
+        except GeneralError as e:
+            raise e
+        except WeroApiError as e:
+            if not e.retry:
+                self._fail_refund(refund, log_data=e.wero_error.message)
+            raise e
+        finally:
+            refund.save(update_fields=["info", "state"])
+
+    def execute_refund(self, refund: OrderRefund):
+        try:
+            eventname = re.sub("[^a-zA-Z0-9/?:().,'+\\- ]", "", str(self.event.name))
+
+            client = self.get_wero_client(refund)
+            with refund_info(refund=refund) as refund_info_data:
+                with payment_info(payment=refund.payment) as payment_info_data:
+                    capture_id = payment_info_data.captures[0].id
+                    resp = client.create_refund(
+                        payment_info_data.id,
+                        capture_id,
+                        refund.order.event.currency,
+                        refund.amount,
+                        f"{refund.full_id} {eventname}",
+                    )
+                    refund_info_data.id = resp.id
+                    refund_info_data.refund = resp
+                    refund_info_data.capture_id = capture_id
+                    refund.state = OrderRefund.REFUND_STATE_TRANSIT
+            self._process_refund(refund, resp)
+        except (WeroApiError, GeneralError) as e:
+            if isinstance(e, WeroApiError):
+                message = e.wero_error.message
+            else:
+                try:
+                    message = e.response.text
+                except AttributeError:
+                    message = str(e.response)
+
+            self._fail_refund(refund, log_data=message)
+            raise PaymentException(message)
+        finally:
+            refund.save(update_fields=["info", "state"])
+            refund.refresh_from_db()
+            if refund.state != OrderRefund.REFUND_STATE_DONE:
+                refresh_refund(refund.id, True)

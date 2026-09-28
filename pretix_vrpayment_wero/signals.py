@@ -3,10 +3,10 @@ from datetime import timedelta
 from django.dispatch import receiver
 from django.utils.timezone import now
 from django_scopes import scopes_disabled
-from pretix.base.models import Event, OrderPayment
+from pretix.base.models import Event, OrderPayment, OrderRefund
 from pretix.base.signals import periodic_task, register_payment_providers
 
-from .tasks import refresh_transaction
+from .tasks import refresh_refund, refresh_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,6 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
         for payment in payments_qs.filter(
             state__in=[
                 OrderPayment.PAYMENT_STATE_CREATED,
-                OrderPayment.PAYMENT_STATE_PENDING,
             ],
             created__lt=now() - timedelta(hours=1),
         ):
@@ -56,4 +55,16 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
             ],
             created__gte=now() - timedelta(hours=24),
         ):
-            refresh_transaction.apply_async(args=(payment.pk,))
+            refresh_transaction.apply_async(args=(payment.pk, True))
+
+        refunds_qs = OrderRefund.objects.filter(
+            order__event=ev,
+            provider=identifier,
+            state=OrderRefund.REFUND_STATE_TRANSIT,
+        )
+
+        for refund in refunds_qs.filter(created__lt=now() - timedelta(hours=24)):
+            refund.fail(log_data="Refund expired.")
+
+        for refund in refunds_qs.filter(created__gte=now() - timedelta(hours=24)):
+            refresh_refund.apply_async(args=(refund.pk, True))
