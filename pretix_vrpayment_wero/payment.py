@@ -114,7 +114,7 @@ class VRPaymentWero(BasePaymentProvider):
             "request": request,
             "event": self.event,
             "settings": self.settings,
-            "payment_info": load_payment_info_data(payment).to_dict(),
+            "payment_info": payment_info,
             "payment": payment,
             "provider": self,
         }
