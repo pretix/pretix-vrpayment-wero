@@ -88,13 +88,17 @@ class VRPaymentWero(BasePaymentProvider):
         self, request: HttpRequest, payment: OrderPayment
     ) -> str:
         template = get_template("pretix_vrpayment_wero/pending.html")
+        try:
+            payment_info = load_payment_info_data(payment).to_dict()
+        except:
+            payment_info = {}
         ctx = {
             "request": request,
             "event": self.event,
             "settings": self.settings,
             "order": payment.order,
             "payment": payment,
-            "payment_info": load_payment_info_data(payment).to_dict(),
+            "payment_info": payment_info,
         }
         return template.render(ctx)
 
@@ -102,6 +106,10 @@ class VRPaymentWero(BasePaymentProvider):
         self, request: HttpRequest, payment: OrderPayment
     ) -> str:
         template = get_template("pretix_vrpayment_wero/control.html")
+        try:
+            payment_info = load_payment_info_data(payment).to_dict()
+        except:
+            payment_info = {}
         ctx = {
             "request": request,
             "event": self.event,
