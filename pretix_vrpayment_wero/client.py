@@ -219,7 +219,7 @@ class MoneySerializer(CamelCaseSerializer):
 
 class StatusSerializer(CamelCaseSerializer):
     result = serializers.ChoiceField(choices=Result)
-    detail = serializers.CharField(allow_blank=True)
+    detail = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(allow_blank=True)
     code = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -228,7 +228,7 @@ class WeroErrorSerializer(CamelCaseSerializer):
     type = serializers.CharField(allow_blank=True)
     title = serializers.CharField(allow_blank=True)
     status = serializers.IntegerField(allow_null=True)
-    detail = serializers.CharField(allow_blank=True)
+    detail = serializers.CharField(required=False, allow_blank=True)
     instance = serializers.CharField(allow_blank=True)
 
     @staticmethod
