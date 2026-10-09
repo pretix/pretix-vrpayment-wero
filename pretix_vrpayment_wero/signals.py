@@ -64,7 +64,7 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
         )
 
         for refund in refunds_qs.filter(created__lt=now() - timedelta(hours=24)):
-            refund.fail(log_data="Refund expired.")
+            refund.payment_provider._fail_refund(refund, "Refund expired.")
 
         for refund in refunds_qs.filter(created__gte=now() - timedelta(hours=24)):
             refresh_refund.apply_async(args=(refund.pk, True))
