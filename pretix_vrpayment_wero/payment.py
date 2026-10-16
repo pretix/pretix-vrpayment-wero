@@ -14,6 +14,7 @@ from pretix.base.forms import SecretKeySettingsField
 from pretix.base.models import Order, OrderPayment, OrderRefund
 from pretix.base.payment import BasePaymentProvider, PaymentException
 from pretix.multidomain.urlreverse import build_absolute_uri
+from rest_framework.exceptions import ValidationError
 
 from pretix_vrpayment_wero.client import (
     Authorization,
@@ -89,16 +90,16 @@ class VRPaymentWero(BasePaymentProvider):
     ) -> str:
         template = get_template("pretix_vrpayment_wero/pending.html")
         try:
-            payment_info = load_payment_info_data(payment).to_dict()
-        except:
-            payment_info = {}
+            info = load_payment_info_data(payment).to_dict()
+        except (ValidationError, KeyError, TypeError, AttributeError):
+            info = {}
         ctx = {
             "request": request,
             "event": self.event,
             "settings": self.settings,
             "order": payment.order,
             "payment": payment,
-            "payment_info": payment_info,
+            "payment_info": info,
         }
         return template.render(ctx)
 
@@ -107,14 +108,14 @@ class VRPaymentWero(BasePaymentProvider):
     ) -> str:
         template = get_template("pretix_vrpayment_wero/control.html")
         try:
-            payment_info = load_payment_info_data(payment).to_dict()
-        except:
-            payment_info = {}
+            info = load_payment_info_data(payment).to_dict()
+        except (ValidationError, KeyError, TypeError, AttributeError):
+            info = {}
         ctx = {
             "request": request,
             "event": self.event,
             "settings": self.settings,
-            "payment_info": payment_info,
+            "payment_info": info,
             "payment": payment,
             "provider": self,
         }
@@ -239,6 +240,7 @@ class VRPaymentWero(BasePaymentProvider):
             with payment_info(payment, save=True) as info:
                 info.id = resp.id
                 info.payment = resp
+            payment.state = OrderPayment.PAYMENT_STATE_PENDING
 
             return resp.landing_page
         except (WeroApiError, GeneralError) as e:

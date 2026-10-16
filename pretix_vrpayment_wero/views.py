@@ -60,7 +60,6 @@ class ReturnView(VRPaymentWeroOrderView, View):
 
         if self.payment.state in (
             OrderPayment.PAYMENT_STATE_CONFIRMED,
-            OrderPayment.PAYMENT_STATE_CANCELED,
             OrderPayment.PAYMENT_STATE_FAILED,
         ):
             return self._redirect_to_order()

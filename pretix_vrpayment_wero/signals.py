@@ -51,7 +51,6 @@ def periodic_task_handler(package, identifier, sender, **kwargs):
                 OrderPayment.PAYMENT_STATE_CREATED,
                 OrderPayment.PAYMENT_STATE_PENDING,
                 OrderPayment.PAYMENT_STATE_CANCELED,
-                OrderPayment.PAYMENT_STATE_FAILED,
             ],
             created__gte=now() - timedelta(hours=24),
         ):

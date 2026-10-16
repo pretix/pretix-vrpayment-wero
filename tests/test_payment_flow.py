@@ -143,16 +143,18 @@ def wero_flow(wero_client, order) -> WeroFlowIds:
 
 @pytest.fixture
 def started_payment(provider, payment, wero_flow) -> OrderPayment:
-    """A payment that has been handed off to WERO and is waiting to be polled."""
+    """
+    A payment that has been handed off to WERO and is waiting to be polled.
+    """
     provider.execute_payment({}, payment)
-    assert payment.state == OrderPayment.PAYMENT_STATE_CREATED
+    assert payment.state == OrderPayment.PAYMENT_STATE_PENDING
     return payment
 
 
 def test_execute_payment_successful(provider, payment, wero_flow):
     provider.execute_payment({}, payment)
 
-    assert payment.state == OrderPayment.PAYMENT_STATE_CREATED
+    assert payment.state == OrderPayment.PAYMENT_STATE_PENDING
 
     with payment_info(payment) as info_data:
         assert info_data.id == wero_flow.payment_id
@@ -193,7 +195,7 @@ POLLING_STEPS = list(INFO_RECORDED_BEFORE_STEP)
 @pytest.mark.parametrize(
     "failing_step,expected_state",
     [
-        ("get_consent", OrderPayment.PAYMENT_STATE_CREATED),
+        ("get_consent", OrderPayment.PAYMENT_STATE_PENDING),
         ("get_authorizations", OrderPayment.PAYMENT_STATE_PENDING),
         ("create_capture", OrderPayment.PAYMENT_STATE_PENDING),
         ("get_captures", OrderPayment.PAYMENT_STATE_PENDING),

@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 
 from pretix_vrpayment_wero.client import (
-    GeneralError,
+    NotFoundError,
     Result,
     WeroClient,
 )
@@ -117,7 +117,7 @@ def test_create_payment_and_refund(client):
     for i in range(10):
         try:
             authorization = client.get_authorizations(payment.id)
-        except GeneralError:
+        except NotFoundError:
             continue
         if authorization[0].status.result == Result.SUCCESSFUL:
             break
