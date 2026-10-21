@@ -252,7 +252,7 @@ class VRPaymentWero(BasePaymentProvider):
                 except AttributeError:
                     message = str(e.response)
 
-            payment.fail(log_data=message)
+            payment.fail(info=payment.info_data, log_data=message)
             raise PaymentException(message)
         finally:
             payment.save(update_fields=["info", "state"])
@@ -262,7 +262,10 @@ class VRPaymentWero(BasePaymentProvider):
     def get_consent(self, payment: OrderPayment):
         if "id" not in payment.info_data:
             payment.fail()
-            raise PaymentException(_("Could not retrieve consents. Please try again."))
+            raise PaymentException(
+                _("%s: Could not retrieve consents. Please try again.")
+                % payment.global_id
+            )
 
         try:
             client = self.get_wero_client(payment)
@@ -275,9 +278,10 @@ class VRPaymentWero(BasePaymentProvider):
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 return None
             if consent.status.result == Result.FAILED:
-                payment.fail(log_data=str(consent))
+                payment.fail(info=payment.info_data, log_data=str(consent))
                 raise PaymentException(
-                    _("No consent was provided for this payment. Please try again.")
+                    _("%s: No consent was provided for this payment. Please try again.")
+                    % payment.global_id
                 )
             if consent.status.result == Result.SUCCESSFUL:
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
@@ -285,7 +289,7 @@ class VRPaymentWero(BasePaymentProvider):
 
         except WeroApiError as e:
             if not e.retry:
-                payment.fail(log_data=e.wero_error.message)
+                payment.fail(info=payment.info_data, log_data=e.wero_error.message)
             raise e
 
         finally:
@@ -297,7 +301,8 @@ class VRPaymentWero(BasePaymentProvider):
         if "id" not in payment.info_data:
             payment.fail()
             raise PaymentException(
-                _("Could not retrieve authorizations. Please try again.")
+                _("%s: Could not retrieve authorizations. Please try again.")
+                % payment.global_id
             )
 
         try:
@@ -314,9 +319,10 @@ class VRPaymentWero(BasePaymentProvider):
 
             failed = [auth.status.result == Result.FAILED for auth in authorizations]
             if any(failed):
-                payment.fail(log_data=str(authorizations))
+                payment.fail(info=payment.info_data, log_data=str(authorizations))
                 raise PaymentException(
-                    _("Authorization failed for this payment. Please try again.")
+                    _("%s: Authorization failed for payment. Please try again.")
+                    % payment.global_id
                 )
 
             success = [
@@ -327,7 +333,7 @@ class VRPaymentWero(BasePaymentProvider):
 
         except WeroApiError as e:
             if not e.retry:
-                payment.fail(log_data=e.wero_error.message)
+                payment.fail(info=payment.info_data, log_data=e.wero_error.message)
             raise e
         finally:
             payment.save(update_fields=["state", "info"])
@@ -337,7 +343,10 @@ class VRPaymentWero(BasePaymentProvider):
     def capture(self, payment: OrderPayment):
         if "id" not in payment.info_data:
             payment.fail()
-            raise PaymentException(_("Could not capture payment. Please try again."))
+            raise PaymentException(
+                _("%s: Could not capture payment. Please try again.")
+                % payment.global_id
+            )
 
         try:
             client = self.get_wero_client(payment)
@@ -352,7 +361,7 @@ class VRPaymentWero(BasePaymentProvider):
 
         except WeroApiError as e:
             if not e.retry:
-                payment.fail(log_data=e.wero_error.message)
+                payment.fail(info=payment.info_data, log_data=e.wero_error.message)
             raise e
         finally:
             payment.save(update_fields=["state", "info"])
@@ -362,7 +371,10 @@ class VRPaymentWero(BasePaymentProvider):
     def get_captures(self, payment: OrderPayment, authorizations: List[Authorization]):
         if "id" not in payment.info_data:
             payment.fail()
-            raise PaymentException(_("Could not validate payment. Please try again."))
+            raise PaymentException(
+                _("%s: Could not validate payment. Please try again.")
+                % payment.global_id
+            )
 
         try:
             client = self.get_wero_client(payment)
@@ -379,11 +391,12 @@ class VRPaymentWero(BasePaymentProvider):
             last_capture = captures[-1]
 
             if last_capture.status.result == Result.FAILED:
-                payment.fail()
+                payment.fail(info=payment.info_data)
                 raise PaymentException(
                     _(
-                        "The payment failed without an error message. You can click below to try again."
+                        "%s: The payment failed without an error message. You can click below to try again."
                     )
+                    % payment.global_id
                 )
             elif last_capture.status.result == Result.PENDING:
                 payment.state = OrderPayment.PAYMENT_STATE_PENDING
@@ -397,7 +410,7 @@ class VRPaymentWero(BasePaymentProvider):
             return captures
         except WeroApiError as e:
             if not e.retry:
-                payment.fail(log_data=e.wero_error.message)
+                payment.fail(info=payment.info_data, log_data=e.wero_error.message)
             raise e
         finally:
             payment.save(update_fields=["state", "info"])
@@ -431,7 +444,10 @@ class VRPaymentWero(BasePaymentProvider):
     def get_refunds(self, refund: OrderRefund):
         if "id" not in refund.info_data:
             self._fail_refund(refund, "")
-            raise PaymentException(_("Could not retrieve refund_id. Please try again."))
+            raise PaymentException(
+                _("%s: Could not retrieve refund_id. Please try again.")
+                % refund.global_id
+            )
 
         try:
             client = self.get_wero_client(refund)
@@ -451,7 +467,8 @@ class VRPaymentWero(BasePaymentProvider):
                         refund, log_data="Multiple matching refunds in API response."
                     )
                     raise PaymentException(
-                        _("Multiple matching refunds in API response.")
+                        _("%s: Multiple matching refunds in API response.")
+                        % refund.global_id
                     )
 
                 info_data.refunds = relevant_refunds
