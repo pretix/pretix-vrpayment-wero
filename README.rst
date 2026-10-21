@@ -45,7 +45,7 @@ License
 
 Copyright 2025 pretix GmbH
 
-Released under the terms of the proprietary pretix Enterprise license.
+Released under the terms of the Apache License 2.0
 
 
 

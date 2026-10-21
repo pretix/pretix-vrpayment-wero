@@ -3,7 +3,7 @@ name = "pretix-vrpayment-wero"
 dynamic = ["version"]
 description = "Accept WERO payments through VR Payment, the payment service provider of Volksbanken Raiffeisenbanken."
 readme = "README.rst"
-license = {text = "pretix Enterprise"}
+license = {text = "Apache"}
 keywords = ["pretix"]
 authors = [
     {name = "pretix Team", email = "support@pretix.eu"},
